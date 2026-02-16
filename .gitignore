@@ -156,13 +156,17 @@ relation/pre_trained_models/
 
 # Data files (keep *.py scripts, ignore data)
 relation/data/**/*.json
+relation/data/**/*.jsonl
 relation/data/**/*.csv
 relation/data/**/*.tsv
 relation/data/**/*.txt
+relation/data/**/*.PubTator
 relation/data_multi_sentence/**/*.json
+relation/data_multi_sentence/**/*.jsonl
 relation/data_multi_sentence/**/*.csv
 relation/data_multi_sentence/**/*.tsv
 relation/data_multi_sentence/**/*.txt
+relation/data_multi_sentence/**/*.PubTator
 repurposing/data
 
 # Copied data in model training directories
