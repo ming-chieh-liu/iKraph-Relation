@@ -1,11 +1,14 @@
 #! /bin/bash
 
 if true; then
-ckplist=(`ls ./pred_configs/*.json`)
+type="_with_extra"
+ckplist=(`ls ./pred_configs${type}/*.json`)
 for ckp in ${ckplist[@]}
 do
-#ls ${ckp}
-python -u ./run_modeling_bert.py ${ckp}
+    if [[ $ckp == *"roberta"* ]]; then
+        python -u ./run_modeling_roberta.py ${ckp}
+    else
+        python -u ./run_modeling_bert.py ${ckp}
+    fi
 done
 fi
-

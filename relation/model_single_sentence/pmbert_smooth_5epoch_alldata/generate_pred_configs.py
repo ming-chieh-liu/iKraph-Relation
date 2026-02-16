@@ -3,12 +3,12 @@ import os
 import sys
 import json
 
-pred_config_path = f"./pred_configs"
+pred_config_path = f"./pred_configs_with_extra"
 if not os.path.exists(pred_config_path): os.mkdir(pred_config_path) 
 checkpoints = json.load(open(f"./selected_checkpoints.json", "r", encoding="utf-8"))
 
 for checkpoint in [ckp for stn in checkpoints for ckp in stn]:
-    CKPOINT = f"./fine_tuned_models{checkpoint[1:]}"
+    CKPOINT = f"./fine_tuned_models_with_extra{checkpoint[1:]}"
     items = checkpoint.split("_")
     fn_items = checkpoint.split("/")
     FIDX = int(items[8])
@@ -22,7 +22,7 @@ for checkpoint in [ckp for stn in checkpoints for ckp in stn]:
     os.environ["WANDB_PROJECT"] = "litcoin_sentence_model"
     MAX_SPLITS = 5
     dataframes = [f"./new_train_splits/split_{split_id}/data.json" for split_id in range(0, MAX_SPLITS)]
-    test_data = f"./new_annotated_test_pd.json"
+    test_data = f"../../pubmed_data/annotated_train_pubmed_pd.json"
     folds = {
         0: [[0, 1, 2], [3], [4]],
         1: [[1, 2, 3], [4], [0]],
@@ -49,7 +49,7 @@ for checkpoint in [ckp for stn in checkpoints for ckp in stn]:
     train_dict = dict(
         output_dir=SAVE_PATH,
         num_train_epochs=EPOCHS,
-        evaluation_strategy='steps',
+        eval_strategy='steps', # steps
         learning_rate=LEARNING_RATE,
         eval_steps=200,
         save_total_limit = 10,

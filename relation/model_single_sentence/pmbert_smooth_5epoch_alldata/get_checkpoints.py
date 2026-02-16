@@ -1,7 +1,7 @@
 import os
 import json
 
-fine_tuned_models = f"./fine_tuned_models"
+fine_tuned_models = f"./fine_tuned_models_with_extra"
 subfolders = [f.name for f in os.scandir(fine_tuned_models) if f.is_dir()]
 
 checkpoints = []

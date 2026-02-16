@@ -34,13 +34,13 @@ def post_nltk_processing(sentence_list, VERBOSE=False):
             MERGE = 0
             continue
 
-        p = re.compile("[\.\?]\s([A-Z][a-z]*)\s")
+        p = re.compile(r"[\.\?]\s([A-Z][a-z]*)\s")
         result = p.search(sent)
         if result != None:
             tmpW = result.group(1)
             if tmpW != '' and tmpW.lower() in words.words():
                 # we should split this case
-                pos = re.search("[\.\?]\s([A-Z][a-z]*)\s", sent)
+                pos = re.search(r"[\.\?]\s([A-Z][a-z]*)\s", sent)
                 pos = pos.span()[0]
                 sent1 = sent[0:pos+1]
                 sent2 = sent[pos+1:]

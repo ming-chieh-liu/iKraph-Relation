@@ -2,8 +2,8 @@
 import os
 import json
 
-fine_tuned_models = f"./fine_tuned_models"
-target_preds_folder = f"./predictions"
+fine_tuned_models = f"./fine_tuned_models_with_extra"
+target_preds_folder = f"./predictions_with_extra"
 if not os.path.exists(target_preds_folder): os.mkdir(target_preds_folder)
 checkpoints = json.load(open(f"./selected_checkpoints.json", "r", encoding="utf-8"))
 

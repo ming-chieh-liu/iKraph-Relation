@@ -10,10 +10,12 @@ import transformers
 import datasets
 import pandas as pd
 import numpy as np
+import torch 
 from transformers import AutoTokenizer
 from transformers import Trainer
 from transformers import TrainingArguments
 from transformers import HfArgumentParser
+from transformers import TrainerCallback
 from transformers import set_seed
 from transformers.trainer_utils import get_last_checkpoint
 
@@ -22,6 +24,89 @@ from modeling_bert import MyBertForSequenceClassification
 from modeling_bert_triplet import BertTripletForSequenceClassification
 
 logger = logging.getLogger(__name__)
+
+class SaveBestModelCallback(TrainerCallback):
+    """
+    Custom callback that saves both the best model and the last model.
+    - checkpoint-best/: Contains the model with the best evaluation metric
+    - checkpoint-last/: Contains the most recent model (updated every evaluation)
+    """
+    def __init__(self, enable_saving=True):
+        self.enable_saving = enable_saving
+        self.best_metric = None
+        self.best_checkpoint_path = None
+
+    def on_evaluate(self, args, state, control, metrics=None, **kwargs):
+        """
+        Called after each evaluation.
+        - Always saves to checkpoint-last/
+        - Saves to checkpoint-best/ only if current metric is better than previous best
+        """
+        # Early return if saving is disabled (e.g., during prediction/evaluation only)
+        if not self.enable_saving:
+            return control
+
+        if metrics is None:
+            return control
+
+        # Get the metric we're tracking (e.g., "eval_f1")
+        metric_key = f"eval_{args.metric_for_best_model}"
+        if metric_key not in metrics:
+            logger.warning(f"Metric {metric_key} not found in evaluation metrics. Available: {metrics.keys()}")
+            return
+
+        current_metric = metrics[metric_key]
+
+        # Always save the last checkpoint
+        last_checkpoint_path = os.path.join(args.output_dir, "checkpoint-last")
+        logger.info(f"Saving last checkpoint to {last_checkpoint_path} (step {state.global_step}, {args.metric_for_best_model}={current_metric:.4f})")
+
+        kwargs['model'].save_pretrained(last_checkpoint_path)
+        kwargs['tokenizer'].save_pretrained(last_checkpoint_path)
+
+        # Save trainer state for last checkpoint
+        last_state_dict = {
+            'global_step': state.global_step,
+            'epoch': state.epoch,
+            'metric_key': metric_key,
+            'metric': current_metric,
+        }
+        torch.save(last_state_dict, os.path.join(last_checkpoint_path, "trainer_state.pt"))
+
+        # Determine if current metric is better than best
+        is_better = False
+        if self.best_metric is None:
+            is_better = True
+        else:
+            # Check if we want to maximize or minimize the metric
+            greater_is_better = args.greater_is_better if hasattr(args, 'greater_is_better') else True
+            if greater_is_better:
+                is_better = current_metric > self.best_metric
+            else:
+                is_better = current_metric < self.best_metric
+
+        # Save best checkpoint if improved
+        if is_better:
+            self.best_metric = current_metric
+            best_checkpoint_path = os.path.join(args.output_dir, "checkpoint-best")
+
+            logger.info(f"New best {args.metric_for_best_model}: {current_metric:.4f}. Saving to {best_checkpoint_path}")
+
+            kwargs['model'].save_pretrained(best_checkpoint_path)
+            kwargs['tokenizer'].save_pretrained(best_checkpoint_path)
+
+            # Save trainer state for best checkpoint
+            best_state_dict = {
+                'best_metric': self.best_metric,
+                'best_model_checkpoint': best_checkpoint_path,
+                'global_step': state.global_step,
+                'epoch': state.epoch,
+            }
+            torch.save(best_state_dict, os.path.join(best_checkpoint_path, "trainer_state.pt"))
+
+            self.best_checkpoint_path = best_checkpoint_path
+
+        return control
 
 @dataclass
 class NonTrainingArguments:
@@ -197,12 +282,18 @@ def main(config_dict=None):
         precision, recall, f1, _ = precision_recall_fscore_support(label_ids, predictions, labels=any_dataset.get_f1_true_labels(), average='micro', zero_division=0)
         return {"accuracy": accuracy, "precision": precision, "recall": recall, "f1": f1}
 
+    # Initialize custom callback for saving only the best model
+    # Only enable saving during training to prevent nested checkpoints during prediction
+    save_best_callback = SaveBestModelCallback(enable_saving=training_args.do_train)
+
     trainer = Trainer(
-        model=model, 
+        model=model,
         args=training_args,
         train_dataset=train_dataset if training_args.do_train else None,
         eval_dataset=eval_dataset if training_args.do_eval else None,
-        compute_metrics=compute_metrics
+        compute_metrics=compute_metrics,
+        callbacks=[save_best_callback],
+        tokenizer=tokenizer
     )
 
     # Training
@@ -218,6 +309,24 @@ def main(config_dict=None):
         metrics["train_samples"] = len(train_dataset)
         trainer.log_metrics("train", metrics)
         trainer.save_metrics("train", metrics)
+
+        # Disable checkpoint saving after training completes
+        save_best_callback.enable_saving = False
+
+        # Load best model if available
+        if save_best_callback.best_checkpoint_path is not None:
+            logger.info(f"Loading best model from {save_best_callback.best_checkpoint_path}")
+            model = model.__class__.from_pretrained(save_best_callback.best_checkpoint_path, **model_configs)
+            tokenizer = AutoTokenizer.from_pretrained(save_best_callback.best_checkpoint_path)
+
+            model = model.to(trainer.args.device)
+
+            trainer.model = model
+            trainer.tokenizer = tokenizer
+        else:
+            logger.info("No best checkpoint found, using current model (last checkpoint)")
+
+    print(f"Callback enable_saving status: {save_best_callback.enable_saving}")
 
     # Evaluation
     if training_args.do_eval:
